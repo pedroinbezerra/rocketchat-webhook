@@ -1,0 +1,12 @@
+version: '3.3'
+services:
+    redis:
+        container_name: redis-rchat-webhook
+        command: redis-server
+        build:
+            context: .
+            dockerfile: docker/Dockerfile-Redis
+        expose:
+            - 6379
+        ports:
+            - 6382:6379
