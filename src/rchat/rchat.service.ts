@@ -7,14 +7,26 @@ export class RchatService {
         @Inject(CACHE_MANAGER) private cacheManager
     ) { }
 
-    async testeCache() {
-        //await this.cacheManager.set('teste', 'PEDRO');
-    }
+    async sendMessage(data) { 
+        var guestPhone = data.label.split('-')[0].trim();
 
-    async sendMessage(data) {
+        if (data.messages[0].closingMessage) {          
+            axios.post(`${process.env.WHATSAPP}/closeclearchat`, {
+                guestNumber: guestPhone,
+                roomId: room_id
+            }).then(() => {
+                console.log(`Atendimento finalizado\n`);
+                console.log(`Departamento: ${data.visitor.department}\nSala: ${data._id}`);
+                console.log(`Guest: ${data.label}\nAgente: ${`${data.agent.name} - ${data.agent.username}`}`);
+                console.log('\n**************************');
+            })
+
+            return;
+        }
+
         if (
             data.messages[0].username == process.env.ROCKETCHAT_MEDIA_SENDER ||
-            data.type == 'LivechatSession'
+            data.type == 'LivechatSession' || data.closer
         ) {
             return;
         }
@@ -24,15 +36,7 @@ export class RchatService {
         var guestPhone = data.label.split('-')[0].trim();
         var department = data.visitor.department;
         var room_id = data._id;
-
-        if (data.messages[0].closingMessage) {
-            axios.post(`${process.env.WHATSAPP}/closeclearchat`, {
-                guestNumber: guestPhone,
-                roomId: room_id
-            }).then(() => {
-                console.log(`Chat ${guestPhone} finalizado`);
-            })
-        }
+        var agent = `${data.agent.name} - ${data.agent.username}`;
 
         if (data.messages[0].attachments) {
             var image = {
@@ -41,15 +45,7 @@ export class RchatService {
             }
         }
 
-        // if ((guestPhone != '5585994195971') && (guestPhone != '5585999847522') && (guestPhone != '5585999959655')) {
-        //     return;
-        // }
-
-        console.log(data);
-
-
         var sentedMessages = await this.cacheManager.get(`rw_messages_${guestPhone}`);
-
         var alreadySented = await this.alreadySented(sentedMessages, messageId);
 
         if (alreadySented) {
@@ -57,18 +53,29 @@ export class RchatService {
             return;
         }
 
+        console.log(`Enviando mensagem\n`);
+        console.log(`Departamento: ${department}\nSala: ${room_id}`);
+        console.log(`Guest: ${data.label}\nAgente: ${agent} ${message ? '\nMensagem: ' + message : ''}   `);
+
+        if (data.messages[0].file) {
+            var file = data.messages[0].file;
+            var fileUpload = data.messages[0].fileUpload;
+            console.log(`Tipo: ${file.type}\nNome: ${file.name}\nTamanho: ${fileUpload.size}`);
+            console.log(`URL: ${fileUpload.publicFilePath}`);
+            console.log(data.messages[0].attachments[0].description ? `Descrição: ${data.messages[0].attachments[0].description}` : '');
+
+        }
+
         var cached = await this.storeMessagesOnCache(sentedMessages, messageId, guestPhone);
 
-        console.log('Cached: ', cached);
+        console.log('\nCached: ', cached);
 
         if (message) {
-            //message = `webhook - ${message}`;
             await this.zenviaSendText(message, guestPhone);
         }
 
         if (image) {
             this.zenviaSendFile(image.url, guestPhone).then(() => {
-                //image.description = `webhook - ${image.description}`;
                 if (image.description) {
                     this.zenviaSendText(image.description, guestPhone);
                 }
@@ -121,6 +128,11 @@ export class RchatService {
                 process.env.ZENVIA_LOGS_URL,
                 zenviaReturn
             )
+        }
+
+        if (zenviaReturn?.status == 200) {
+            console.log(`\nEnviado com sucesso pela Zenvia: ${zenviaReturn.data.id}`);
+            console.log('\n**************************');
         }
     }
 
